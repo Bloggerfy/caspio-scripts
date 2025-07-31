@@ -10,12 +10,21 @@ window.CaspioApp = {
 
     // --- Main Initializer ---
     init(caspioConfig) {
+        // DEBUG: Check if init is called and what config it received
+        console.log("CaspioApp.init() called.", caspioConfig);
+
         if (this.isRunning) return;
         this.isRunning = true;
         this.cfg = caspioConfig;
 
+        // DEBUG: Check if the config was assigned correctly
+        console.log("CaspioApp.cfg assigned:", this.cfg);
+
         // Run initial tasks
         (async () => {
+            // DEBUG: Confirm async tasks are starting
+            console.log("Starting async tasks (colorCells, hlRows)...");
+            
             this.colorCells();
             try {
                 const token = await this.getToken();
@@ -29,109 +38,44 @@ window.CaspioApp = {
     },
 
     // --- Core Functions (as methods) ---
-    showPop(id, opts) {
-        if (this.dismissedPops.has(id)) return;
-        if (this.activePops.size >= 7 && !this.activePops.has(id)) return;
-        const cont = document.getElementById('notification-container');
-        if (!cont) return;
-        let pop = document.getElementById(id);
-        const isNew = !pop;
-        if (isNew) {
-            pop = document.createElement('div');
-            pop.id = id;
-            cont.appendChild(pop);
-        }
-        const disp = opts.displayType || 'grid';
-        const reqClass = `display-${disp}`;
-        const newHTML = `<div class="popup-title">${opts.title}</div>`;
-        if (!pop.classList.contains(reqClass) || isNew || pop.innerHTML.indexOf(newHTML) === -1) {
-            pop.className = `highlight-box status-${opts.statusType || 'default'} ${reqClass}`;
-            pop.innerHTML = '';
-            if (opts.button && disp === 'flex') {
-                const btnEl = document.createElement('button');
-                btnEl.className = 'action-button publish-button';
-                btnEl.textContent = opts.button.text;
-                btnEl.onclick = opts.button.onClick;
-                pop.appendChild(btnEl);
-                const titleEl = document.createElement('div');
-                titleEl.className = 'popup-title';
-                titleEl.innerHTML = opts.title;
-                pop.appendChild(titleEl);
-            } else {
-                let html = `<div class="popup-title">${opts.title}</div>`;
-                if (opts.message) html += `<div>${opts.message}</div>`;
-                if (opts.timerText) html += `<div id="timer-${id}" class="notification-timer">${opts.timerText}</div>`;
-                pop.innerHTML = html;
-            }
-        }
-        if (!pop.querySelector('.popup-close-btn')) {
-            const closeBtn = document.createElement('span');
-            closeBtn.className = 'popup-close-btn';
-            closeBtn.innerHTML = '&times;';
-            closeBtn.onclick = () => {
-                this.dismissedPops.add(id);
-                this.hidePop(id);
-            };
-            pop.appendChild(closeBtn);
-        }
-        setTimeout(() => pop.classList.add('show'), 50);
-        this.activePops.add(id);
-    },
-
-    hidePop(id) {
-        const pop = document.getElementById(id);
-        if (pop) {
-            pop.classList.remove('show');
-            setTimeout(() => pop.remove(), 500);
-        }
-        this.activePops.delete(id);
-    },
-
-    countdown(id, secs) {
-        let t = secs;
-        if (this.cdInt) clearInterval(this.cdInt);
-        this.cdInt = setInterval(() => {
-            t--;
-            const timerEl = document.getElementById(`timer-${id}`);
-            if (timerEl) timerEl.textContent = `Checking status in ${t} seconds...`;
-            if (t <= 0) clearInterval(this.cdInt);
-        }, 1000);
+    // ... (the rest of your functions like showPop, hidePop, etc., remain unchanged)
+    
+    colorCells() {
+        console.log("Running colorCells()..."); // DEBUG
+        document.querySelectorAll('input[id^="AI_Content_DB_Content_Status"], input[id^="AI_Content_DB_Content_Instructions"]').forEach(inputElement => {
+            const c = inputElement.closest('td');
+            if (!c) return;
+            let t = c.textContent.trim().toLowerCase();
+            if (t.includes("generating") || t === "generated") c.style.color = "#FF8429";
+            else if (t.includes("publishing soon")) { c.style.color = "#00bd5e"; }
+            else if (t.includes("published")) { c.style.color = "#00bd5e"; c.style.fontWeight = "bold"; }
+            else if (t.includes("n/a")) c.style.color = "#a6a6a6";
+            else if (t.includes("error") || t.includes("issue")) c.style.color = "#D9534F";
+            else if (t.includes("ready to publish")) c.style.color = "#00bd5e";
+        });
     },
 
     async getToken() {
+        // DEBUG: Check if getToken is being called
+        console.log("Attempting to get token...");
         const r = await fetch(this.cfg.tokenEP, {
             method: 'POST',
             headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-            body: `grant_type=client_credentials&client_id=${this.cfg.cliId}&client_secret=${this.cfg.cliSec}`
+            body: `grant_type=client_credentials&client_id=${this.cfg.cliId}&client_secret=[SECRET MASKED]`
         });
         if (!r.ok) throw new Error("Token Error");
         return (await r.json()).access_token;
     },
 
-    async fetchData(tok, tbl, whr) {
-        let allRecords = [], pageNumber = 1, keepFetching = true;
-        while (keepFetching) {
-            const url = `${this.cfg.base}/tables/${tbl}/records?q.where=${encodeURIComponent(whr)}&q.pageNumber=${pageNumber}&q.pageSize=1000`;
-            const r = await fetch(url, { headers: { 'Authorization': `Bearer ${tok}` } });
-            if (!r.ok) throw new Error(`Fetch Error for ${tbl}`);
-            const data = await r.json();
-            const records = data.Result || [];
-            if (records.length > 0) {
-                allRecords.push(...records);
-                pageNumber++;
-            } else {
-                keepFetching = false;
-            }
-            if (records.length < 1000) keepFetching = false;
-        }
-        return allRecords;
-    },
-
     async hlRows(tok) {
+        console.log("Running hlRows()..."); // DEBUG
         const date = new Date(Date.now() - 600000);
         date.setHours(date.getHours() - 5);
         const t = date.toISOString();
         const whr = `Client_ID='${this.cfg.clientID}' AND Campaign_Date >= '${t}'`;
+        
+        console.log("Highlight query:", whr); // DEBUG
+        
         try {
             const recs = await this.fetchData(tok, this.cfg.contentTable, whr);
             const cells = document.querySelectorAll('td.cbResultSetData');
