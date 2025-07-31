@@ -9,10 +9,10 @@ window.CaspioApp = {
     isRunning: false,
 
     // --- Main Initializer ---
-    init(config) {
+    init(caspioConfig) {
         if (this.isRunning) return;
         this.isRunning = true;
-        this.cfg = config;
+        this.cfg = caspioConfig;
 
         // Run initial tasks
         (async () => {
